@@ -71,3 +71,56 @@ void execute_queued_command(const char *username, const char *command,
                            char *result);
 void cleanup_client_connection(int client_index);
 void save_document_to_file(void);
+
+int main(int argc, char **argv) {
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <TIME_INTERVAL_MS>\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    broadcast_interval_ms = atoi(argv[1]);
+    printf("Server PID: %d\n", getpid());
+    fflush(stdout);
+
+    // Initialize document and client array
+    doc = markdown_init();
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        clients[i].active = 0;
+    }
+
+    // Block SIGRTMIN+1 for all threads
+    sigset_t block_set;
+    sigemptyset(&block_set);
+    sigaddset(&block_set, SIGRTMIN + 1);
+    pthread_sigmask(SIG_BLOCK, &block_set, NULL);
+
+    // Setup signal handler for client connections
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_flags = SA_SIGINFO;
+    sa.sa_sigaction = handle_client_connection;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGRTMIN, &sa, NULL) < 0) {
+        perror("sigaction");
+        return EXIT_FAILURE;
+    }
+
+    // Start background threads
+    pthread_t stdin_thread;
+    pthread_t broadcast_worker;
+    pthread_create(&stdin_thread, NULL, stdin_command_thread, NULL);
+    pthread_create(&broadcast_worker, NULL, broadcast_thread, NULL);
+
+    // Main server loop - just wait for termination
+    while (server_running) {
+        sleep(SLEEP_INTERVAL_SEC);
+    }
+
+    // Cleanup and save document before exit
+    pthread_mutex_lock(&doc_mutex);
+    save_document_to_file();
+    pthread_mutex_unlock(&doc_mutex);
+    
+    markdown_free(doc);
+    return EXIT_SUCCESS;
+}
