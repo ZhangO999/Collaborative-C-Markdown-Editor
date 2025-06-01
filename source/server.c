@@ -431,3 +431,69 @@ void *broadcast_thread(void *arg) {
     
     return NULL;
 }
+
+// Thread to handle server stdin commands
+void *stdin_command_thread(void *arg) {
+    (void)arg;
+    char command[128];
+    
+    while (fgets(command, sizeof(command), stdin)) {
+        command[strcspn(command, "\n")] = '\0';
+        
+        if (strcmp(command, "QUIT") == 0) {
+            pthread_mutex_lock(&clients_mutex);
+            int active_clients = 0;
+            for (int i = 0; i < MAX_CLIENTS; i++) {
+                if (clients[i].active) {
+                    active_clients++;
+                }
+            }
+            
+            if (active_clients == 0) {
+                printf("Shutting down server...\n");
+                save_document_to_file();
+                server_running = 0;
+                exit(0);
+            } else {
+                printf("QUIT rejected, %d clients still connected.\n", 
+                       active_clients);
+            }
+            pthread_mutex_unlock(&clients_mutex);
+        } 
+        else if (strcmp(command, "DOC?") == 0) {
+            pthread_mutex_lock(&doc_mutex);
+            char *content = markdown_flatten(doc);
+            printf("DOC?\n%s\n", content ? content : "");
+            free(content);
+            pthread_mutex_unlock(&doc_mutex);
+        } 
+        else if (strcmp(command, "LOG?") == 0) {
+            pthread_mutex_lock(&log_mutex);
+            printf("LOG?\n%s", broadcast_log);
+            pthread_mutex_unlock(&log_mutex);
+        }
+    }
+    return NULL;
+}
+
+// Authenticate client against roles.txt
+int authenticate_client(const char *username, char *role, int *permission) {
+    FILE *roles_file = fopen("roles.txt", "r");
+    if (!roles_file) {
+        return 0;
+    }
+
+    char file_username[MAX_USERNAME_LEN];
+    char file_role[MAX_ROLE_LEN];
+    while (fscanf(roles_file, "%127s %15s", file_username, file_role) == 2) {
+        if (strcmp(file_username, username) == 0) {
+            strcpy(role, file_role);
+            *permission = (strcmp(file_role, "write") == 0) ? 1 : 0;
+            fclose(roles_file);
+            return 1;
+        }
+    }
+    
+    fclose(roles_file);
+    return 0;
+}
