@@ -217,3 +217,38 @@ void check_for_broadcasts(void) {
         }
     }
 }
+
+// Process user commands
+void process_command(const char *command) {
+    // Immediate response commands - server replies immediately
+    if (strcmp(command, "DOC?") == 0 || 
+        strcmp(command, "PERM?") == 0 || 
+        strcmp(command, "LOG?") == 0) {
+        
+        send_command(command);
+        char *response = read_immediate_response();
+        if (response) {
+            // Find first newline and print everything after it
+            char *newline = strchr(response, '\n');
+            if (newline) {
+                // Command header
+                printf("%.*s", (int)(newline - response + 1), response); 
+                printf("%s", newline + 1); // Content after header
+            } else {
+                printf("%s", response);
+            }
+            free(response);
+        }
+        return;
+    }
+    
+    // Disconnect command
+    if (strcmp(command, "DISCONNECT") == 0) {
+        send_command(command);
+        printf("Disconnecting...\n");
+        exit(0);
+    }
+    
+    // All other commands (editing commands) - just send and wait for broadcast
+    send_command(command);
+}
