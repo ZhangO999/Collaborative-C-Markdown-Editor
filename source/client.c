@@ -212,7 +212,6 @@ void check_for_broadcasts(void) {
             if (bytes_read > 0) {
                 broadcast[bytes_read] = '\0';
                 printf("Server update:\n%s", broadcast);
-                // TODO: Parse and apply updates to local document
             }
         }
     }
