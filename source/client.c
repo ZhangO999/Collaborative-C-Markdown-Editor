@@ -173,3 +173,47 @@ int authenticate_and_download(void) {
            client_username, user_role);
     return 0;
 }
+
+// Send command to server
+void send_command(const char *command) {
+    dprintf(server_write_fd, "%s\n", command);
+}
+
+// Read immediate response from server (for DOC?, PERM?, LOG? commands)
+char* read_immediate_response(void) {
+    char *response = (char *)malloc(MAX_RESPONSE_LENGTH);
+    if (!response) {
+        return NULL;
+    }
+    
+    ssize_t bytes_read = read(server_read_fd, response, 
+                             MAX_RESPONSE_LENGTH - 1);
+    if (bytes_read <= 0) {
+        free(response);
+        return NULL;
+    }
+    response[bytes_read] = '\0';
+    return response;
+}
+
+// Check for and handle server broadcasts
+void check_for_broadcasts(void) {
+    fd_set read_fds;
+    struct timeval timeout = {0, 0};  // Non-blocking
+    
+    FD_ZERO(&read_fds);
+    FD_SET(server_read_fd, &read_fds);
+    
+    if (select(server_read_fd + 1, &read_fds, NULL, NULL, &timeout) > 0) {
+        if (FD_ISSET(server_read_fd, &read_fds)) {
+            char broadcast[4096];
+            ssize_t bytes_read = read(server_read_fd, broadcast, 
+                                     sizeof(broadcast) - 1);
+            if (bytes_read > 0) {
+                broadcast[bytes_read] = '\0';
+                printf("Server update:\n%s", broadcast);
+                // TODO: Parse and apply updates to local document
+            }
+        }
+    }
+}
