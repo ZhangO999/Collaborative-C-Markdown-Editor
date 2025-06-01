@@ -1,0 +1,86 @@
+# COMP2017 Assignment 2 - .gitignore
+# Excludes object files, executables, and temporary files as required by specs
+
+# === Object Files ===
+*.o
+*.obj
+
+# === Executable Files (from Makefile targets) ===
+server
+client
+tests
+server_tests
+
+# === Debug Executables ===
+debug_*
+
+# === Temporary and Runtime Files ===
+*.tmp
+*.temp
+*~
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# === Build Artifacts ===
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# === Debug Files ===
+*.dSYM/
+*.pdb
+core
+vgcore.*
+*.gdb_history
+
+# === Editor/IDE Files ===
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.cproject
+.project
+.settings/
+*.code-workspace
+
+# === System Files ===
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# === Assignment-Specific Runtime Files ===
+doc.md
+roles.txt.bak
+test_roles.txt
+FIFO_*
+*.log
+
+# === Valgrind/Sanitizer Output ===
+*.out
+*.output
+valgrind-out.txt
+sanitizer-*.log
+
+# === Backup Files ===
+*.bak
+*.backup
+*~
+
+# === Compressed Files (unless specifically needed) ===
+*.zip
+*.tar.gz
+*.tgz
+*.tar.bz2
+
+# === Testing Artifacts ===
+test_output/
+test_results/
+coverage_report/ 
