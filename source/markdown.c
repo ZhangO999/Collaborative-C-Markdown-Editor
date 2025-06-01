@@ -164,6 +164,7 @@ void markdown_free(document *doc) {
     free(doc);                   // Free document structure itself
 }
 
+
 // === Edit Commands ===
 
 /**
@@ -586,6 +587,7 @@ int markdown_link(document *doc, uint64_t version, size_t start, size_t end,
     return add_text(doc, start, "[");
 }
 
+
 // === Utilities ===
 
 /**
@@ -619,6 +621,8 @@ char *markdown_flatten(const document *doc) {
     buf[total] = 0; // Null terminate
     return buf;
 }
+
+
 
 // === Versioning ===
 
@@ -662,6 +666,7 @@ void markdown_increment_version(document *doc) {
     doc->working_head = NULL;       // Clear working list
     doc->current_version += 1;      // Increment version number
 }
+
 
 // Helper functions: 
 
@@ -875,5 +880,73 @@ int put_text(document *doc, size_t pos, const char *str) {
         doc->working_head = ins;
     }
 
+    return SUCCESS;
+}
+
+/**
+ * Delete text starting at position for specified length
+ * Marks segments as PENDING_DEL and handles partial deletions
+ */
+int remove_text(document *doc, size_t pos, size_t len) {
+    if (!doc->working_head) {
+        sync_working(doc);
+    }
+    
+    size_t seen = 0;
+    size_t remain = len;
+    text_segment *cur = doc->working_head;
+
+    // Find starting node - count all visible segments (COMMITTED_ORIGINAL 
+    // and PENDING_DEL)
+    while (cur && (cur->state == PENDING_INS || seen + cur->length <= pos)) {
+        if (cur->state != PENDING_INS) {
+            seen += cur->length;
+        }
+        cur = cur->next_segment;
+    }
+
+    // Process deletion across multiple segments
+    while (cur && remain > 0) {
+        // Skip inserted segments (they don't count for position)
+        if (cur->state == PENDING_INS) {
+            cur = cur->next_segment;
+            continue;
+        }
+        
+        // Calculate deletion range within this segment
+        size_t off = (pos > seen) ? (pos - seen) : 0;  // offset within seg
+        size_t dellen = (cur->length - off < remain) ? 
+                       cur->length - off : remain;  // length to delete
+
+        // If partial delete at end, split the segment after deletion point
+        if (off + dellen < cur->length) {
+            text_segment *aft = (text_segment *)malloc(sizeof(text_segment));
+            aft->length = cur->length - (off + dellen);
+            aft->content = (char *)malloc(aft->length + 1);
+            memcpy(aft->content, cur->content + off + dellen, aft->length);
+            aft->content[aft->length] = 0;
+            aft->state = cur->state;
+            aft->next_segment = cur->next_segment;
+            cur->next_segment = aft;
+        }
+        
+        // If partial delete at beginning, split the segment before deletion 
+        // point
+        if (off > 0) {
+            text_segment *aft = cur->next_segment;
+            cur->length = off;
+            cur->content[off] = 0;
+            cur = aft;
+            seen += off + dellen;
+            remain -= dellen;
+            continue;
+        }
+        
+        // Full node is in delete range - mark for deletion
+        cur->state = PENDING_DEL;
+        remain -= dellen;
+        seen += dellen;
+        cur = cur->next_segment;
+    }
     return SUCCESS;
 }
