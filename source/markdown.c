@@ -483,6 +483,7 @@ int markdown_horizontal_rule(document *doc, uint64_t version, size_t pos) {
         return OUTDATED_VERSION;
     }
 
+    // Insert horizontal rule as a complete block element including trailing newline
     return insert_block_element(doc, pos, "---\n");
 }
 
