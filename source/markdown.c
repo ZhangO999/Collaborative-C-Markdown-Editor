@@ -621,7 +621,45 @@ char *markdown_flatten(const document *doc) {
 }
 
 // === Versioning ===
+
+/**
+ * Commit working changes to create new document version
+ * Promotes working list to committed, removes deleted segments
+ */
 void markdown_increment_version(document *doc) {
-    (void)doc;
+    if (!doc->working_head) {
+        return;
+    }
+    
+    // Free old committed list
+    free_segment_list(doc->committed_head);
+    doc->committed_head = NULL;
+
+    // Promote working list to committed, filtering out deleted segments
+    text_segment **tail = &doc->committed_head;
+    text_segment *cur = doc->working_head;
+    text_segment *tmp = NULL;
+    
+    while (cur) {
+        tmp = cur->next_segment;
+        
+        if (cur->state != PENDING_DEL) {
+            // Keep this segment - convert inserted segments to original
+            if (cur->state == PENDING_INS) {
+                cur->state = COMMITTED_ORIGINAL;
+            }
+            cur->next_segment = NULL;
+            *tail = cur;
+            tail = &(cur->next_segment);
+        } else {
+            // Remove deleted segment
+            free(cur->content);
+            free(cur);
+        }
+        cur = tmp;
+    }
+    
+    doc->working_head = NULL;       // Clear working list
+    doc->current_version += 1;      // Increment version number
 }
 
