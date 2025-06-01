@@ -338,8 +338,107 @@ int markdown_blockquote(document *doc, uint64_t version, size_t pos) {
     return insert_block_element(doc, pos, "> ");
 }
 
+/**
+ * Insert ordered list item with automatic numbering
+ * Handles renumbering of subsequent list items
+ */
 int markdown_ordered_list(document *doc, uint64_t version, size_t pos) {
-    (void)doc; (void)version; (void)pos;
+    if (doc->current_version != version) {
+        return OUTDATED_VERSION;
+    }
+    
+    char *flat = markdown_flatten(doc);
+    if (!flat) {
+        return INVALID_CURSOR_POS;
+    }
+    
+    size_t flat_len = strlen(flat);
+    if (pos > flat_len) {
+        free(flat);
+        return INVALID_CURSOR_POS;
+    }
+
+    // Check if at line start
+    int at_line_start = (pos == 0 || flat[pos - 1] == '\n');
+
+    // Find previous list number
+    int prev_num = 0;
+    if (pos > 0) {
+        // Find start of previous line
+        int i = (int)pos - 2;
+        while (i >= 0 && flat[i] != '\n') {
+            i--;
+        }
+        size_t prev_line_start = (i >= 0) ? (size_t)(i + 1) : 0;
+
+        // Check if previous line is numbered list
+        if (isdigit(flat[prev_line_start])) {
+            size_t n = 0;
+            while (isdigit(flat[prev_line_start + n])) {
+                n++;
+            }
+            if (flat[prev_line_start + n] == '.' && 
+                flat[prev_line_start + n + 1] == ' ') {
+                prev_num = atoi(flat + prev_line_start);
+            }
+        }
+    }
+    
+    int new_num = prev_num + 1;
+
+    // Create list item prefix
+    char prefix[20];
+    if (at_line_start) {
+        snprintf(prefix, sizeof(prefix), "%d. ", new_num);
+    } else {
+        snprintf(prefix, sizeof(prefix), "\n%d. ", new_num);
+    }
+
+    // Insert new list item
+    int res = add_text(doc, pos, prefix);
+    if (res != SUCCESS) {
+        free(flat);
+        return res;
+    }
+
+    // Renumber subsequent list items
+    size_t scan = pos + strlen(prefix);
+    int next_num = new_num + 1;
+    
+    while (scan < flat_len) {
+        // Find next line
+        size_t next_line = scan;
+        while (next_line < flat_len && flat[next_line] != '\n') {
+            next_line++;
+        }
+        if (next_line >= flat_len) {
+            break;
+        }
+        next_line++; // skip the '\n'
+
+        // Check if it's a numbered list item
+        if (isdigit(flat[next_line])) {
+            size_t n = 0;
+            while (isdigit(flat[next_line + n])) {
+                n++;
+            }
+            
+            if (flat[next_line + n] == '.' && 
+                flat[next_line + n + 1] == ' ') {
+                // Renumber this item
+                size_t old_len = n + 2;
+                char new_prefix[20];
+                snprintf(new_prefix, sizeof(new_prefix), "%d. ", next_num++);
+                
+                remove_text(doc, next_line, old_len);
+                add_text(doc, next_line, new_prefix);
+                scan = next_line + strlen(new_prefix);
+                continue;
+            }
+        }
+        break; // Not a numbered line, stop renumbering
+    }
+    free(flat);
     return SUCCESS;
 }
 
