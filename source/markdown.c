@@ -165,14 +165,42 @@ void markdown_free(document *doc) {
 }
 
 // === Edit Commands ===
-int markdown_insert(document *doc, uint64_t version, size_t pos, const char *content) {
-    (void)doc; (void)version; (void)pos; (void)content;
-    return SUCCESS;
+
+/**
+ * Insert text content at specified position in document
+ * Validates version and delegates to put_text helper
+ */
+int markdown_insert(document *doc, uint64_t version, size_t pos, 
+                   const char *content) {
+    if (!doc || !content) {
+        return INVALID_CURSOR_POS;
+    }
+    
+    // Only accept edits on current version
+    int result = validate_version_op(doc, version);
+    if (result != SUCCESS) {
+        return result;
+    }
+    
+    return put_text(doc, pos, content);
 }
 
+/**
+ * Delete specified number of characters starting from position
+ * Validates version and delegates to remove_text helper
+ */
 int markdown_delete(document *doc, uint64_t version, size_t pos, size_t len) {
-    (void)doc; (void)version; (void)pos; (void)len;
-    return SUCCESS;
+    if (!doc) {
+        return INVALID_CURSOR_POS;
+    }
+    
+    // Only accept edits on current version
+    int result = validate_version_op(doc, version);
+    if (result != SUCCESS) {
+        return result;
+    }
+    
+    return remove_text(doc, pos, len);
 }
 
 // === Formatting Commands ===
