@@ -663,3 +663,61 @@ void markdown_increment_version(document *doc) {
     doc->current_version += 1;      // Increment version number
 }
 
+// Helper functions: 
+
+/**
+ * Copy committed list into working list for editing
+ * All segments become COMMITTED_ORIGINAL state
+ */
+void sync_working(document *doc) {
+    // Free any existing working list
+    free_segment_list(doc->working_head);
+    doc->working_head = NULL;
+
+    // Clone committed list into working list
+    text_segment **tail = &(doc->working_head);
+    for (text_segment *n = doc->committed_head; n; n = n->next_segment) {
+        text_segment *copy = (text_segment *)malloc(sizeof(text_segment));
+        copy->length = n->length;
+        copy->content = (char *)malloc(n->length + 1);
+        memcpy(copy->content, n->content, n->length);
+        copy->content[n->length] = 0;           // Null terminate
+        copy->state = COMMITTED_ORIGINAL;       // All segments start as 
+                                               // original
+        copy->next_segment = NULL;
+        *tail = copy;
+        tail = &(copy->next_segment);
+    }
+}
+
+/**
+ * Find the segment and offset for a logical position in the working list
+ * Used for cursor positioning in document operations
+ */
+int find_cursor(document *doc, size_t pos, text_segment **out_line, 
+               size_t *out_offset) {
+    size_t seen = 0;
+    text_segment *cur = doc->working_head;
+
+    while (cur) {
+        // Only count non-inserted segments for position calculation
+        if (cur->state != PENDING_INS && pos <= seen + cur->length) {
+            *out_line = cur;
+            *out_offset = pos - seen;
+            return SUCCESS;
+        }
+        if (cur->state != PENDING_INS) {
+            seen += cur->length;
+        }
+        cur = cur->next_segment;
+    }
+    
+    // Handle insertion at end of document
+    if (pos == seen) {
+        *out_line = NULL;
+        *out_offset = 0;
+        return SUCCESS;
+    }
+    
+    return INVALID_CURSOR_POS;
+}
