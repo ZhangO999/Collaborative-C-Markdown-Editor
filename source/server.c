@@ -179,3 +179,121 @@ void handle_client_connection(int sig, siginfo_t *info, void *ctx) {
     // Send acknowledgment
     kill(client_pid, SIGRTMIN + 1);
 }
+
+// Thread to handle individual client
+void *client_handler_thread(void *arg) {
+    int client_index = (int)(intptr_t)arg;
+    pid_t client_pid = clients[client_index].client_pid;
+    
+    // Build FIFO names
+    char fifo_c2s[64];
+    char fifo_s2c[64];
+    snprintf(fifo_c2s, sizeof(fifo_c2s), "FIFO_C2S_%d", client_pid);
+    snprintf(fifo_s2c, sizeof(fifo_s2c), "FIFO_S2C_%d", client_pid);
+
+    // Open FIFOs
+    int fd_read = open(fifo_c2s, O_RDONLY);
+    if (fd_read < 0) {
+        perror("Failed to open C2S FIFO");
+        cleanup_client_connection(client_index);
+        return NULL;
+    }
+    
+    int fd_write = open(fifo_s2c, O_WRONLY);
+    if (fd_write < 0) {
+        perror("Failed to open S2C FIFO");
+        close(fd_read);
+        cleanup_client_connection(client_index);
+        return NULL;
+    }
+
+    clients[client_index].read_fd = fd_read;
+    clients[client_index].write_fd = fd_write;
+
+    // Read and authenticate client
+    char username[MAX_USERNAME_LEN];
+    ssize_t bytes_read = read(fd_read, username, sizeof(username) - 1);
+    if (bytes_read <= 0) {
+        perror("Failed to read username");
+        goto cleanup;
+    }
+    username[bytes_read] = '\0';
+    username[strcspn(username, "\n")] = '\0';
+
+    // Authenticate user
+    char role[MAX_ROLE_LEN];
+    int permission = 0;
+    if (!authenticate_client(username, role, &permission)) {
+        dprintf(fd_write, "Reject UNAUTHORISED\n");
+        sleep(AUTH_DELAY_SEC);  // Brief delay as per spec
+        goto cleanup;
+    }
+
+    // Store client information
+    strncpy(clients[client_index].username, username, 
+            sizeof(clients[client_index].username) - 1);
+    strncpy(clients[client_index].role, role, 
+            sizeof(clients[client_index].role) - 1);
+    clients[client_index].permission = permission;
+
+    // Send authentication success and initial document
+    dprintf(fd_write, "%s\n", role);
+    
+    // Send document version and content
+    pthread_mutex_lock(&doc_mutex);
+    uint64_t version = doc->current_version;
+    char *doc_content = markdown_flatten(doc);
+    size_t doc_length = doc_content ? strlen(doc_content) : 0;
+    
+    dprintf(fd_write, "%lu\n%zu\n", version, doc_length);
+    if (doc_content && doc_length > 0) {
+        write(fd_write, doc_content, doc_length);
+    }
+    pthread_mutex_unlock(&doc_mutex);
+    free(doc_content);
+
+    printf("Client connected: %s (%s)\n", username, role);
+
+    // Command processing loop
+    char command[MAX_CMD_LEN];
+    while (server_running && clients[client_index].active) {
+        bytes_read = read(fd_read, command, sizeof(command) - 1);
+        if (bytes_read <= 0) {
+            break; // Client disconnected
+        }
+        
+        command[bytes_read] = '\0';
+        command[strcspn(command, "\n")] = '\0';
+
+        if (strcmp(command, "DISCONNECT") == 0) {
+            printf("Client disconnecting: %s\n", username);
+            break;
+        }
+
+        // Handle different command types
+        if (strcmp(command, "DOC?") == 0 || 
+            strcmp(command, "PERM?") == 0 || 
+            strcmp(command, "LOG?") == 0) {
+            // Immediate response commands
+            handle_immediate_command(client_index, command);
+        } else {
+            // Edit commands - queue for batch processing
+            enqueue_edit_command(username, command);
+        }
+    }
+
+cleanup:
+    // Cleanup client connection
+    close(fd_read);
+    close(fd_write);
+    unlink(fifo_c2s);
+    unlink(fifo_s2c);
+    cleanup_client_connection(client_index);
+    
+    // Save document when client disconnects (to ensure latest state is saved)
+    pthread_mutex_lock(&doc_mutex);
+    save_document_to_file();
+    pthread_mutex_unlock(&doc_mutex);
+    
+    return NULL;
+}
