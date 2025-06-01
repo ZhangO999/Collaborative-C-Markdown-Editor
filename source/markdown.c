@@ -469,8 +469,92 @@ int markdown_code(document *doc, uint64_t version, size_t start, size_t end) {
     return apply_range_format(doc, start, end, "`");
 }
 
+/**
+ * Insert horizontal rule with proper newline handling
+ * Ensures rule is on its own line with newlines before and after
+ */
 int markdown_horizontal_rule(document *doc, uint64_t version, size_t pos) {
-    (void)doc; (void)version; (void)pos;
+    if (!doc) {
+        return INVALID_CURSOR_POS;
+    }
+    if (version != doc->current_version) {
+        return OUTDATED_VERSION;
+    }
+
+    if (!doc->working_head) {
+        sync_working(doc);
+    }
+
+    // Check if we need a newline before the horizontal rule
+    int need_newline_before = 0;
+    if (pos > 0) {
+        size_t seen = 0;
+        text_segment *cur = doc->working_head;
+        char prev_char = 0;
+        int found = 0;
+        
+        while (cur && !found) {
+            if (seen + cur->length > pos - 1) {
+                prev_char = cur->content[pos - 1 - seen];
+                found = 1;
+            }
+            seen += cur->length;
+            cur = cur->next_segment;
+        }
+        
+        need_newline_before = (found && prev_char != '\n');
+    }
+
+    // Insert newline before if needed
+    if (need_newline_before) {
+        add_text(doc, pos, "\n");
+        pos++; // Adjust position after newline insertion
+    } else {
+        // If there is already a '\n' at pos, insert after it
+        size_t seen = 0;
+        text_segment *cur = doc->working_head;
+        char next_char = 0;
+        int found = 0;
+        
+        while (cur && !found) {
+            if (seen + cur->length > pos) {
+                next_char = cur->content[pos - seen];
+                found = 1;
+            }
+            seen += cur->length;
+            cur = cur->next_segment;
+        }
+        
+        // If current position is a newline, move past it
+        if (found && next_char == '\n') {
+            pos++; // skip over the newline to insert after it
+        }
+    }
+
+    // Insert the horizontal rule marker "---"
+    add_text(doc, pos, "---");
+    pos += 3;
+
+    // Always ensure there is a newline *after* the horizontal rule
+    size_t seen = 0;
+    text_segment *cur = doc->working_head;
+    char next_char = 0;
+    int found = 0;
+    
+    while (cur && !found) {
+        if (seen + cur->length > pos) {
+            next_char = cur->content[pos - seen];
+            found = 1;
+        }
+        seen += cur->length;
+        cur = cur->next_segment;
+    }
+    
+    // Insert newline after rule if not already present
+    if (!found || next_char != '\n') {
+        add_text(doc, pos, "\n");
+    }
+
     return SUCCESS;
 }
 
