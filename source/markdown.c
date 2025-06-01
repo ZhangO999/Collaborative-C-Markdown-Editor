@@ -323,9 +323,19 @@ int markdown_italic(document *doc, uint64_t version, size_t start,
     return apply_range_format(doc, start, end, "*");
 }
 
+/**
+ * Insert blockquote formatting at specified position
+ * Handles newline insertion for block-level element requirements
+ */
 int markdown_blockquote(document *doc, uint64_t version, size_t pos) {
-    (void)doc; (void)version; (void)pos;
-    return SUCCESS;
+    if (!doc) {
+        return INVALID_CURSOR_POS;
+    }
+    if (doc->current_version != version) {
+        return OUTDATED_VERSION;
+    }
+
+    return insert_block_element(doc, pos, "> ");
 }
 
 int markdown_ordered_list(document *doc, uint64_t version, size_t pos) {
