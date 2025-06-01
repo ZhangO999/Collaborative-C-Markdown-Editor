@@ -45,3 +45,54 @@ void setup_signal_handling(void) {
         exit(EXIT_FAILURE);
     }
 }
+
+// Perform initial handshake with server
+int perform_handshake(pid_t server_pid) {
+    printf("Connecting to server (PID: %d)...\n", server_pid);
+    
+    // Send SIGRTMIN to server
+    if (kill(server_pid, SIGRTMIN) < 0) {
+        perror("Failed to signal server");
+        return -1;
+    }
+
+    // Wait for SIGRTMIN+1 response with timeout
+    alarm(HANDSHAKE_TIMEOUT_SEC);  // 1 second timeout
+    while (!handshake_complete) {
+        pause();
+    }
+    alarm(0);
+
+    if (!handshake_complete) {
+        fprintf(stderr, "Server did not respond to connection request\n");
+        return -1;
+    }
+
+    return 0;
+}
+
+// Open communication FIFOs
+int open_communication_channels(void) {
+    pid_t my_pid = getpid();
+    char fifo_c2s[64];
+    char fifo_s2c[64];
+    
+    snprintf(fifo_c2s, sizeof(fifo_c2s), "FIFO_C2S_%d", my_pid);
+    snprintf(fifo_s2c, sizeof(fifo_s2c), "FIFO_S2C_%d", my_pid);
+
+    // Open FIFOs
+    server_write_fd = open(fifo_c2s, O_WRONLY);
+    if (server_write_fd < 0) {
+        perror("Failed to open client-to-server FIFO");
+        return -1;
+    }
+
+    server_read_fd = open(fifo_s2c, O_RDONLY);
+    if (server_read_fd < 0) {
+        perror("Failed to open server-to-client FIFO");
+        close(server_write_fd);
+        return -1;
+    }
+
+    return 0;
+}
