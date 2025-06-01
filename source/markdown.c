@@ -224,9 +224,78 @@ int markdown_newline(document *doc, uint64_t version, size_t pos) {
     return add_text(doc, pos, "\n");
 }
 
-int markdown_heading(document *doc, uint64_t version, int level, size_t pos) {
-    (void)doc; (void)version; (void)level; (void)pos;
-    return SUCCESS;
+/**
+ * Insert markdown heading at specified position
+ * Handles automatic newline insertion for block-level elements
+ * Creates heading markers (# ## ###) with required space
+ */
+int markdown_heading(document *doc, uint64_t version, size_t level, 
+                    size_t pos) {
+    int result = validate_version_op(doc, version);
+    if (result != SUCCESS) {
+        return result;
+    }
+    if (level < 1 || level > 3) {
+        return INVALID_CURSOR_POS;
+    }
+
+    // Ensure working list exists
+    if (!doc->working_head) {
+        sync_working(doc);
+    }
+
+    // Check if we need newline before heading
+    int needs_newline = 0;
+    if (pos > 0) {
+        size_t count = 0;
+        text_segment *cur = doc->working_head;
+        char prev_char = 0;
+        
+        // Find character before insertion point
+        while (cur && count + cur->length < pos) {
+            count += cur->length;
+            cur = cur->next_segment;
+        }
+        
+        if (cur && pos > count && cur->length >= (pos - count)) {
+            prev_char = cur->content[pos - count - 1];
+        } else if (!cur && count > 0) {
+            // At end - find last character
+            cur = doc->working_head;
+            size_t total = 0;
+            while (cur) {
+                if (total + cur->length >= count) {
+                    break;
+                }
+                total += cur->length;
+                cur = cur->next_segment;
+            }
+            if (cur && cur->length > 0) {
+                prev_char = cur->content[cur->length - 1];
+            }
+        }
+        
+        needs_newline = (prev_char != '\n');
+    }
+
+    // Insert newline if needed
+    if (needs_newline) {
+        result = add_text(doc, pos, "\n");
+        if (result != SUCCESS) {
+            return result;
+        }
+        pos++;
+    }
+
+    // Build and insert heading marker
+    char heading_str[5]; // max "### " + '\0'
+    for (size_t i = 0; i < level; i++) {
+        heading_str[i] = '#';
+    }
+    heading_str[level] = ' ';
+    heading_str[level + 1] = '\0';
+
+    return add_text(doc, pos, heading_str);
 }
 
 int markdown_bold(document *doc, uint64_t version, size_t start, size_t end) {
