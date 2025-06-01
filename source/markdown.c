@@ -442,14 +442,31 @@ int markdown_ordered_list(document *doc, uint64_t version, size_t pos) {
     return SUCCESS;
 }
 
+/**
+ * Insert unordered list item marker at specified position
+ * Handles newline insertion for block-level element requirements
+ */
 int markdown_unordered_list(document *doc, uint64_t version, size_t pos) {
-    (void)doc; (void)version; (void)pos;
-    return SUCCESS;
+    if (!doc) {
+        return INVALID_CURSOR_POS;
+    }
+    if (doc->current_version != version) {
+        return OUTDATED_VERSION;
+    }
+    
+    return insert_block_element(doc, pos, "- ");
 }
 
+/**
+ * Apply inline code formatting to text range
+ */
 int markdown_code(document *doc, uint64_t version, size_t start, size_t end) {
-    (void)doc; (void)version; (void)start; (void)end;
-    return SUCCESS;
+    int result = validate_range_op(doc, version, start, end);
+    if (result != SUCCESS) {
+        return result;
+    }
+    
+    return apply_range_format(doc, start, end, "`");
 }
 
 int markdown_horizontal_rule(document *doc, uint64_t version, size_t pos) {
