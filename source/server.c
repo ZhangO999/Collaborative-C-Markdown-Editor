@@ -666,3 +666,25 @@ void execute_queued_command(const char *username, const char *command,
             break;
     }
 }
+
+// Clean up client connection
+void cleanup_client_connection(int client_index) {
+    pthread_mutex_lock(&clients_mutex);
+    clients[client_index].active = 0;
+    memset(&clients[client_index], 0, sizeof(client_t));
+    pthread_mutex_unlock(&clients_mutex);
+}
+
+// Save document to file
+void save_document_to_file(void) {
+    FILE *file = fopen("doc.md", "w");
+    if (file) {
+        char *content = markdown_flatten(doc);
+        if (content) {
+            fprintf(file, "%s", content);
+            free(content);
+        }
+        fclose(file);
+        printf("Document saved to doc.md\n");
+    }
+}
