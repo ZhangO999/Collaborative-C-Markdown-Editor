@@ -96,3 +96,80 @@ int open_communication_channels(void) {
 
     return 0;
 }
+
+// Authenticate and download initial document
+int authenticate_and_download(void) {
+    // Send username
+    dprintf(server_write_fd, "%s\n", client_username);
+
+    // Read role response
+    char response[256];
+    ssize_t bytes_read = read(server_read_fd, response, sizeof(response) - 1);
+    if (bytes_read <= 0) {
+        perror("Failed to read authentication response");
+        return -1;
+    }
+    response[bytes_read] = '\0';
+    
+    // Check for rejection
+    if (strncmp(response, "Reject", 6) == 0) {
+        printf("Authentication failed: %s", response);
+        return -1;
+    }
+
+    // Extract role
+    sscanf(response, "%15s", user_role);
+
+    // Read version
+    bytes_read = read(server_read_fd, response, sizeof(response) - 1);
+    if (bytes_read <= 0) {
+        perror("Failed to read document version");
+        return -1;
+    }
+    response[bytes_read] = '\0';
+    uint64_t version = strtoull(response, NULL, 10);
+
+    // Read document length
+    bytes_read = read(server_read_fd, response, sizeof(response) - 1);
+    if (bytes_read <= 0) {
+        perror("Failed to read document length");
+        return -1;
+    }
+    response[bytes_read] = '\0';
+    size_t doc_length = strtoull(response, NULL, 10);
+
+    // Initialize local document - but DON'T populate it yet
+    local_document = markdown_init();
+    
+    // Read and discard initial document content - client should wait for 
+    // broadcasts
+    if (doc_length > 0) {
+        char *content = (char *)malloc(doc_length + 1);
+        if (!content) {
+            perror("malloc");
+            return -1;
+        }
+        
+        size_t total_read = 0;
+        while (total_read < doc_length) {
+            ssize_t chunk = read(server_read_fd, content + total_read, 
+                                doc_length - total_read);
+            if (chunk <= 0) {
+                free(content);
+                perror("Failed to read document content");
+                return -1;
+            }
+            total_read += chunk;
+        }
+        // Don't insert content into local document - wait for server 
+        // broadcasts
+        free(content);
+    }
+    
+    // Don't set document version - wait for server broadcasts
+    (void)version; // Suppress unused variable warning
+
+    printf("Connected as '%s' with '%s' permissions\n", 
+           client_username, user_role);
+    return 0;
+}
