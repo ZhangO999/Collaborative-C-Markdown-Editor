@@ -483,7 +483,38 @@ int markdown_horizontal_rule(document *doc, uint64_t version, size_t pos) {
         return OUTDATED_VERSION;
     }
 
-    return insert_block_element(doc, pos, "---\n");
+    // Check original document state before making any changes
+    char *flat = markdown_flatten(doc);
+    if (!flat) {
+        return INVALID_CURSOR_POS;
+    }
+    
+    size_t original_len = strlen(flat);
+    int at_document_end = (pos >= original_len);
+    int will_need_leading_newline = (pos > 0 && needs_newline_before(flat, pos));
+    
+    free(flat);
+    
+    // Insert the "---" with automatic leading newline handling
+    int result = insert_block_element(doc, pos, "---");
+    if (result != SUCCESS) {
+        return result;
+    }
+    
+    // According to spec, horizontal rule must have newline after
+    // But only add it if we're not at the document end
+    if (!at_document_end) {
+        // Calculate position after the "---" (and possible leading newline)
+        size_t after_pos = pos;
+        if (will_need_leading_newline) {
+            after_pos++; // Account for leading newline
+        }
+        after_pos += 3; // Account for "---"
+        
+        return add_text(doc, after_pos, "\n");
+    }
+    
+    return SUCCESS;
 }
 
 /**
