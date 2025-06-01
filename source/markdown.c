@@ -587,13 +587,37 @@ int markdown_link(document *doc, uint64_t version, size_t start, size_t end,
 }
 
 // === Utilities ===
+
+/**
+ * Print document to specified stream (currently not implemented)
+ */
 void markdown_print(const document *doc, FILE *stream) {
-    (void)doc; (void)stream;
+    (void)doc; 
+    (void)stream;
 }
 
+/**
+ * Flatten the committed document into a single string
+ * Only includes committed content, not working changes
+ */
 char *markdown_flatten(const document *doc) {
-    (void)doc;
-    return NULL;
+    const text_segment *lst = doc->committed_head;
+    
+    // Calculate total length needed
+    size_t total = 0;
+    for (const text_segment *n = lst; n; n = n->next_segment) {
+        total += n->length;
+    }
+    
+    // Allocate buffer and copy all text segments
+    char *buf = (char *)malloc(total + 1);
+    char *p = buf;
+    for (const text_segment *n = lst; n; n = n->next_segment) {
+        memcpy(p, n->content, n->length);
+        p += n->length;
+    }
+    buf[total] = 0; // Null terminate
+    return buf;
 }
 
 // === Versioning ===
