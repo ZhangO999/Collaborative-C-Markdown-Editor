@@ -558,9 +558,32 @@ int markdown_horizontal_rule(document *doc, uint64_t version, size_t pos) {
     return SUCCESS;
 }
 
-int markdown_link(document *doc, uint64_t version, size_t start, size_t end, const char *url) {
-    (void)doc; (void)version; (void)start; (void)end; (void)url;
-    return SUCCESS;
+/**
+ * Create markdown link by wrapping text in brackets and adding URL
+ */
+int markdown_link(document *doc, uint64_t version, size_t start, size_t end, 
+                 const char *url) {
+    if (!url) {
+        return INVALID_CURSOR_POS;
+    }
+    int result = validate_range_op(doc, version, start, end);
+    if (result != SUCCESS) {
+        return result;
+    }
+
+    // Insert closing bracket and URL first
+    size_t url_len = strlen(url);
+    char *suffix = (char *)malloc(url_len + 4); // "]" + "()" + null
+    sprintf(suffix, "](%s)", url);
+    
+    result = add_text(doc, end, suffix);
+    free(suffix);
+    if (result != SUCCESS) {
+        return result;
+    }
+
+    // Insert opening bracket
+    return add_text(doc, start, "[");
 }
 
 // === Utilities ===
