@@ -26,6 +26,115 @@ int find_cursor(document *doc, size_t pos, text_segment **seg,
                size_t *offset);
 void sync_working(document *doc);
 
+// === Helper Functions ===
+
+/**
+ * Standard validation for version-based operations
+ */
+static int validate_version_op(document *doc, uint64_t version) {
+    if (!doc) {
+        return INVALID_CURSOR_POS;
+    }
+    if (version != doc->current_version) {
+        return OUTDATED_VERSION;
+    }
+    return SUCCESS;
+}
+
+/**
+ * Standard validation for range operations
+ */
+static int validate_range_op(document *doc, uint64_t version, 
+                            size_t start, size_t end) {
+    int result = validate_version_op(doc, version);
+    if (result != SUCCESS) {
+        return result;
+    }
+    if (end <= start) {
+        return INVALID_CURSOR_POS;
+    }
+    return SUCCESS;
+}
+
+/**
+ * Get character at position in flattened document, returns 0 if out of bounds
+ */
+static char get_char_at_pos(const char *flat, size_t flat_len, size_t pos) {
+    return (pos < flat_len) ? flat[pos] : 0;
+}
+
+/**
+ * Check if position needs newline before block element
+ */
+static int needs_newline_before(const char *flat, size_t pos) {
+    if (pos == 0) {
+        return 0;  // At start of document
+    }
+    char prev = get_char_at_pos(flat, pos, pos - 1);
+    return prev != '\n';
+}
+
+/**
+ * Insert block element with automatic newline handling
+ */
+static int insert_block_element(document *doc, size_t pos, 
+                               const char *marker) {
+    char *flat = markdown_flatten(doc);
+    if (!flat) {
+        return INVALID_CURSOR_POS;
+    }
+    
+    size_t flat_len = strlen(flat);
+    if (pos > flat_len) {
+        free(flat);
+        return INVALID_CURSOR_POS;
+    }
+    
+    int result = 0;
+    if (needs_newline_before(flat, pos)) {
+        // Need newline before marker
+        char *with_newline = (char *)malloc(strlen(marker) + 2);
+        sprintf(with_newline, "\n%s", marker);
+        result = add_text(doc, pos, with_newline);
+        free(with_newline);
+    } else {
+        // Just insert marker
+        result = add_text(doc, pos, marker);
+    }
+    
+    free(flat);
+    return result;
+}
+
+/**
+ * Apply range formatting (bold, italic, code) by inserting markers
+ */
+static int apply_range_format(document *doc, size_t start, size_t end, 
+                             const char *marker) {
+    // Insert closing marker first to avoid position shifting
+    int result = add_text(doc, end, marker);
+    if (result != SUCCESS) {
+        return result;
+    }
+    
+    // Insert opening marker at start
+    return add_text(doc, start, marker);
+}
+
+/**
+ * Free a segment list
+ */
+static void free_segment_list(text_segment *head) {
+    text_segment *cur = head;
+    text_segment *tmp = NULL;
+    while (cur) {
+        tmp = cur->next_segment;
+        free(cur->content);
+        free(cur);
+        cur = tmp;
+    }
+}
+
 // === Init and Free ===
 document *markdown_init(void) {
     return NULL;
