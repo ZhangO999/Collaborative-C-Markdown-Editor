@@ -299,3 +299,54 @@ void cleanup(void) {
         close(server_write_fd);
     }
 }
+
+int main(int argc, char **argv) {
+    if (argc != 3) {
+        fprintf(stderr, "Usage: %s <server_pid> <username>\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    pid_t server_pid = atoi(argv[1]);
+    strncpy(client_username, argv[2], sizeof(client_username) - 1);
+    client_username[sizeof(client_username) - 1] = '\0';
+
+    // Validate inputs
+    if (server_pid <= 0) {
+        fprintf(stderr, "Invalid server PID: %d\n", server_pid);
+        return EXIT_FAILURE;
+    }
+
+    if (strlen(client_username) == 0) {
+        fprintf(stderr, "Username cannot be empty\n");
+        return EXIT_FAILURE;
+    }
+
+    // Setup signal handling
+    setup_signal_handling();
+
+    // Perform handshake with server
+    if (perform_handshake(server_pid) < 0) {
+        fprintf(stderr, "Failed to establish connection with server\n");
+        return EXIT_FAILURE;
+    }
+
+    // Open communication channels
+    if (open_communication_channels() < 0) {
+        fprintf(stderr, "Failed to open communication channels\n");
+        return EXIT_FAILURE;
+    }
+
+    // Authenticate and download initial document
+    if (authenticate_and_download() < 0) {
+        fprintf(stderr, "Authentication failed\n");
+        cleanup();
+        return EXIT_FAILURE;
+    }
+
+    // Run main command loop
+    run_command_loop();
+
+    // Cleanup and exit
+    cleanup();
+    return EXIT_SUCCESS;
+}
