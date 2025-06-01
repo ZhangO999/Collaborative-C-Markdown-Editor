@@ -497,3 +497,172 @@ int authenticate_client(const char *username, char *role, int *permission) {
     fclose(roles_file);
     return 0;
 }
+
+// Execute a queued edit command
+void execute_queued_command(const char *username, const char *command, 
+                           char *result) {
+    // Check user permissions
+    int user_permission = 0;
+    pthread_mutex_lock(&clients_mutex);
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (clients[i].active && strcmp(clients[i].username, username) == 0) {
+            user_permission = clients[i].permission;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&clients_mutex);
+
+    // Parse command type
+    char cmd_type[32];
+    sscanf(command, "%31s", cmd_type);
+    
+    // Check if command requires write permission
+    const char *write_commands[] = {"INSERT", "DEL", "NEWLINE", "HEADING", 
+                                   "BOLD", "ITALIC", "BLOCKQUOTE", 
+                                   "ORDERED_LIST", "UNORDERED_LIST", "CODE", 
+                                   "HORIZONTAL_RULE", "LINK"};
+    int requires_write = 0;
+    size_t num_write_commands = sizeof(write_commands) / 
+                               sizeof(write_commands[0]);
+    for (size_t i = 0; i < num_write_commands; i++) {
+        if (strcmp(cmd_type, write_commands[i]) == 0) {
+            requires_write = 1;
+            break;
+        }
+    }
+    
+    if (requires_write && !user_permission) {
+        strcpy(result, "Reject UNAUTHORISED");
+        return;
+    }
+
+    // Execute command
+    int ret = 0;
+    if (strcmp(cmd_type, "INSERT") == 0) {
+        size_t pos = 0;
+        char content[256];
+        if (sscanf(command, "INSERT %zu %255[^\n]", &pos, content) == 2) {
+            ret = markdown_insert(doc, doc->current_version, pos, content);
+        } else {
+            strcpy(result, "Reject INVALID_POSITION");
+            return;
+        }
+    } else if (strcmp(cmd_type, "DEL") == 0) {
+        size_t pos = 0;
+        size_t len = 0;
+        if (sscanf(command, "DEL %zu %zu", &pos, &len) == 2) {
+            ret = markdown_delete(doc, doc->current_version, pos, len);
+        } else {
+            strcpy(result, "Reject INVALID_POSITION");
+            return;
+        }
+    } else if (strcmp(cmd_type, "NEWLINE") == 0) {
+        size_t pos = 0;
+        if (sscanf(command, "NEWLINE %zu", &pos) == 1) {
+            ret = markdown_newline(doc, doc->current_version, pos);
+        } else {
+            strcpy(result, "Reject INVALID_POSITION");
+            return;
+        }
+    } else if (strcmp(cmd_type, "HEADING") == 0) {
+        size_t level = 0;
+        size_t pos = 0;
+        if (sscanf(command, "HEADING %zu %zu", &level, &pos) == 2) {
+            ret = markdown_heading(doc, doc->current_version, level, pos);
+        } else {
+            strcpy(result, "Reject INVALID_POSITION");
+            return;
+        }
+    } else if (strcmp(cmd_type, "BOLD") == 0) {
+        size_t start = 0;
+        size_t end = 0;
+        if (sscanf(command, "BOLD %zu %zu", &start, &end) == 2) {
+            ret = markdown_bold(doc, doc->current_version, start, end);
+        } else {
+            strcpy(result, "Reject INVALID_POSITION");
+            return;
+        }
+    } else if (strcmp(cmd_type, "ITALIC") == 0) {
+        size_t start = 0;
+        size_t end = 0;
+        if (sscanf(command, "ITALIC %zu %zu", &start, &end) == 2) {
+            ret = markdown_italic(doc, doc->current_version, start, end);
+        } else {
+            strcpy(result, "Reject INVALID_POSITION");
+            return;
+        }
+    } else if (strcmp(cmd_type, "BLOCKQUOTE") == 0) {
+        size_t pos = 0;
+        if (sscanf(command, "BLOCKQUOTE %zu", &pos) == 1) {
+            ret = markdown_blockquote(doc, doc->current_version, pos);
+        } else {
+            strcpy(result, "Reject INVALID_POSITION");
+            return;
+        }
+    } else if (strcmp(cmd_type, "ORDERED_LIST") == 0) {
+        size_t pos = 0;
+        if (sscanf(command, "ORDERED_LIST %zu", &pos) == 1) {
+            ret = markdown_ordered_list(doc, doc->current_version, pos);
+        } else {
+            strcpy(result, "Reject INVALID_POSITION");
+            return;
+        }
+    } else if (strcmp(cmd_type, "UNORDERED_LIST") == 0) {
+        size_t pos = 0;
+        if (sscanf(command, "UNORDERED_LIST %zu", &pos) == 1) {
+            ret = markdown_unordered_list(doc, doc->current_version, pos);
+        } else {
+            strcpy(result, "Reject INVALID_POSITION");
+            return;
+        }
+    } else if (strcmp(cmd_type, "CODE") == 0) {
+        size_t start = 0;
+        size_t end = 0;
+        if (sscanf(command, "CODE %zu %zu", &start, &end) == 2) {
+            ret = markdown_code(doc, doc->current_version, start, end);
+        } else {
+            strcpy(result, "Reject INVALID_POSITION");
+            return;
+        }
+    } else if (strcmp(cmd_type, "HORIZONTAL_RULE") == 0) {
+        size_t pos = 0;
+        if (sscanf(command, "HORIZONTAL_RULE %zu", &pos) == 1) {
+            ret = markdown_horizontal_rule(doc, doc->current_version, pos);
+        } else {
+            strcpy(result, "Reject INVALID_POSITION");
+            return;
+        }
+    } else if (strcmp(cmd_type, "LINK") == 0) {
+        size_t start = 0;
+        size_t end = 0;
+        char url[256];
+        if (sscanf(command, "LINK %zu %zu %255s", &start, &end, url) == 3) {
+            ret = markdown_link(doc, doc->current_version, start, end, url);
+        } else {
+            strcpy(result, "Reject INVALID_POSITION");
+            return;
+        }
+    } else {
+        strcpy(result, "Reject INVALID_POSITION");
+        return;
+    }
+
+    // Convert return code to result string
+    switch (ret) {
+        case SUCCESS:
+            strcpy(result, "SUCCESS");
+            break;
+        case INVALID_CURSOR_POS:
+            strcpy(result, "Reject INVALID_POSITION");
+            break;
+        case DELETED_POSITION:
+            strcpy(result, "Reject DELETED_POSITION");
+            break;
+        case OUTDATED_VERSION:
+            strcpy(result, "Reject OUTDATED_VERSION");
+            break;
+        default:
+            strcpy(result, "Reject INVALID_POSITION");
+            break;
+    }
+}
