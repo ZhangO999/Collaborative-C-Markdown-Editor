@@ -252,3 +252,50 @@ void process_command(const char *command) {
     // All other commands (editing commands) - just send and wait for broadcast
     send_command(command);
 }
+
+// Main command loop
+void run_command_loop(void) {
+    char command[MAX_COMMAND_LENGTH];
+    
+    printf("\nEnter commands (type 'DISCONNECT' to quit):\n");
+    printf("Available commands: INSERT, DEL, NEWLINE, HEADING, BOLD, "
+           "ITALIC, etc.\n");
+    printf("Query commands: DOC?, PERM?, LOG?\n\n");
+    
+    while (1) {
+        printf("> ");
+        fflush(stdout);
+
+        // Check for server broadcasts before reading user input
+        check_for_broadcasts();
+
+        // Read user command
+        if (fgets(command, sizeof(command), stdin)) {
+            // Remove trailing newline
+            command[strcspn(command, "\n")] = '\0';
+            
+            // Skip empty commands
+            if (strlen(command) == 0) {
+                continue;
+            }
+            
+            // Process the command
+            process_command(command);
+        } else {
+            break; // EOF or error
+        }
+    }
+}
+
+// Cleanup resources
+void cleanup(void) {
+    if (local_document) {
+        markdown_free(local_document);
+    }
+    if (server_read_fd >= 0) {
+        close(server_read_fd);
+    }
+    if (server_write_fd >= 0) {
+        close(server_write_fd);
+    }
+}
