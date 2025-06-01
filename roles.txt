@@ -1,0 +1,5 @@
+alice write
+bob read
+charlie write
+dave read
+eve write
