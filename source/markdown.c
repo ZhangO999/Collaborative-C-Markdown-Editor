@@ -136,12 +136,32 @@ static void free_segment_list(text_segment *head) {
 }
 
 // === Init and Free ===
+
+/**
+ * Initialize a new markdown document structure
+ * Sets up empty committed and working lists, version 0
+ */
 document *markdown_init(void) {
-    return NULL;
+    document *doc = (document *)calloc(1, sizeof(document));
+    doc->committed_head = NULL;    // No committed content initially
+    doc->working_head = NULL;      // No working changes initially
+    doc->total_length = 0;         // Document starts empty
+    doc->current_version = 0;      // Start at version 0
+    return doc;
 }
 
+/**
+ * Free all memory associated with a markdown document
+ * Cleans up both committed and working linked lists
+ */
 void markdown_free(document *doc) {
-    (void)doc;
+    if (!doc) {
+        return;
+    }
+    
+    free_segment_list(doc->committed_head);
+    free_segment_list(doc->working_head);
+    free(doc);                   // Free document structure itself
 }
 
 // === Edit Commands ===
