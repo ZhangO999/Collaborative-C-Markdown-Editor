@@ -204,9 +204,24 @@ int markdown_delete(document *doc, uint64_t version, size_t pos, size_t len) {
 }
 
 // === Formatting Commands ===
-int markdown_newline(document *doc, int version, int pos) {
-    (void)doc; (void)version; (void)pos;
-    return SUCCESS;
+
+/**
+ * Insert a newline character at the specified position
+ * Simple wrapper around add_text for newline insertion
+ */
+int markdown_newline(document *doc, uint64_t version, size_t pos) {
+    if (!doc) {
+        return INVALID_CURSOR_POS;
+    }
+    
+    // Only accept edits on current version
+    int result = validate_version_op(doc, version);
+    if (result != SUCCESS) {
+        return result;
+    }
+    
+    // Insert newline at the specified position
+    return add_text(doc, pos, "\n");
 }
 
 int markdown_heading(document *doc, uint64_t version, int level, size_t pos) {
