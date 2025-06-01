@@ -297,3 +297,63 @@ cleanup:
     
     return NULL;
 }
+
+// Handle commands that require immediate response
+void handle_immediate_command(int client_index, const char *command) {
+    int fd_write = clients[client_index].write_fd;
+    
+    if (strcmp(command, "DOC?") == 0) {
+        pthread_mutex_lock(&doc_mutex);
+        char *content = markdown_flatten(doc);
+        dprintf(fd_write, "DOC?\n%s\n", content ? content : "");
+        free(content);
+        pthread_mutex_unlock(&doc_mutex);
+    } 
+    else if (strcmp(command, "PERM?") == 0) {
+        dprintf(fd_write, "PERM?\n%s\n", clients[client_index].role);
+    } 
+    else if (strcmp(command, "LOG?") == 0) {
+        pthread_mutex_lock(&log_mutex);
+        dprintf(fd_write, "LOG?\n%s", broadcast_log);
+        pthread_mutex_unlock(&log_mutex);
+    }
+}
+
+// Add edit command to queue
+void enqueue_edit_command(const char *username, const char *command) {
+    command_node_t *node = (command_node_t *)malloc(sizeof(command_node_t));
+    if (!node) {
+        return;
+    }
+
+    strncpy(node->command, command, MAX_CMD_LEN - 1);
+    node->command[MAX_CMD_LEN - 1] = '\0';
+    strncpy(node->username, username, MAX_USERNAME_LEN - 1);
+    node->username[MAX_USERNAME_LEN - 1] = '\0';
+    clock_gettime(CLOCK_REALTIME, &node->timestamp);
+    node->next = NULL;
+
+    pthread_mutex_lock(&command_queue_mutex);
+    if (!command_tail) {
+        command_head = command_tail = node;
+    } else {
+        command_tail->next = node;
+        command_tail = node;
+    }
+    pthread_mutex_unlock(&command_queue_mutex);
+}
+
+// Remove and return next command from queue
+command_node_t *dequeue_command(void) {
+    if (!command_head) {
+        return NULL;
+    }
+    
+    command_node_t *node = command_head;
+    command_head = command_head->next;
+    if (!command_head) {
+        command_tail = NULL;
+    }
+    
+    return node;
+}
