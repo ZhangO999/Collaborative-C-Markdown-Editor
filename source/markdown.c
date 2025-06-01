@@ -721,3 +721,159 @@ int find_cursor(document *doc, size_t pos, text_segment **out_line,
     
     return INVALID_CURSOR_POS;
 }
+
+/**
+ * Insert text at specified position in working list
+ * Handles position finding, node splitting, and insertion ordering
+ */
+int add_text(document *doc, size_t pos, const char *str) {
+    if (!doc->working_head) {
+        sync_working(doc);
+    }
+
+    text_segment *cur = doc->working_head;
+    text_segment *prev = NULL;
+    size_t seen = 0;
+    
+    // Step 1: Find the insertion position, counting only visible segments 
+    // (non-PENDING_INS)
+    while (cur) {
+        if (cur->state != PENDING_INS) {
+            if (seen + cur->length <= pos) {
+                // Position is after this segment
+                seen += cur->length;
+                prev = cur;
+                cur = cur->next_segment;
+            } else {
+                // Position is within this segment
+                break;
+            }
+        } else {
+            // Skip inserted segments for position calculation
+            prev = cur;
+            cur = cur->next_segment;
+        }
+    }
+    
+    // Step 2: If inserting in the middle of a visible node, split it
+    if (cur && cur->state != PENDING_INS && pos > seen && 
+        pos < seen + cur->length) {
+        size_t l1 = pos - seen;
+        size_t l2 = cur->length - l1;
+        
+        // Create second half of split node
+        text_segment *mid = (text_segment *)malloc(sizeof(text_segment));
+        mid->length = l2;
+        mid->content = (char *)malloc(l2 + 1);
+        memcpy(mid->content, cur->content + l1, l2);
+        mid->content[l2] = 0;
+        mid->state = cur->state;
+        mid->next_segment = cur->next_segment;
+
+        // Truncate first half
+        cur->length = l1;
+        cur->content[l1] = 0;
+        cur->next_segment = mid;
+        prev = cur;
+        cur = mid;
+    }
+
+    // Step 3: Find the end of any existing insertions at this position
+    // New insertions go after existing ones at the same logical position
+    while (cur && cur->state == PENDING_INS) {
+        prev = cur;
+        cur = cur->next_segment;
+    }
+
+    // Step 4: Insert new segment after existing insertions at same position
+    text_segment *ins = (text_segment *)malloc(sizeof(text_segment));
+    ins->length = strlen(str);
+    ins->content = (char *)malloc(ins->length + 1);
+    strcpy(ins->content, str);
+    ins->state = PENDING_INS;
+    ins->next_segment = cur;
+
+    // Link into list
+    if (prev) {
+        prev->next_segment = ins;
+    } else {
+        doc->working_head = ins;
+    }
+
+    return SUCCESS;
+}
+
+/**
+ * Alternative insertion function that places new insertions first
+ * Used by markdown_insert to maintain insertion order
+ */
+int put_text(document *doc, size_t pos, const char *str) {
+    if (!doc->working_head) {
+        sync_working(doc);
+    }
+
+    // Validate position by counting total visible length
+    size_t total_length = 0;
+    text_segment *cur = doc->working_head;
+    while (cur) {
+        if (cur->state != PENDING_INS) {
+            total_length += cur->length;
+        }
+        cur = cur->next_segment;
+    }
+    
+    // Position must be within [0, total_length]
+    if (pos > total_length) {
+        return INVALID_CURSOR_POS;
+    }
+
+    cur = doc->working_head;
+    text_segment *prev = NULL;
+    size_t seen = 0;
+    
+    // Find the insertion position, counting only visible segments
+    while (cur && seen + cur->length <= pos) {
+        if (cur->state != PENDING_INS) {
+            seen += cur->length;
+        }
+        prev = cur;
+        cur = cur->next_segment;
+    }
+    
+    // If inserting in the middle of a visible node, split it
+    if (cur && cur->state != PENDING_INS && pos > seen && 
+        pos < seen + cur->length) {
+        size_t l1 = pos - seen;
+        size_t l2 = cur->length - l1;
+        
+        text_segment *mid = (text_segment *)malloc(sizeof(text_segment));
+        mid->length = l2;
+        mid->content = (char *)malloc(l2 + 1);
+        memcpy(mid->content, cur->content + l1, l2);
+        mid->content[l2] = 0;
+        mid->state = cur->state;
+        mid->next_segment = cur->next_segment;
+
+        cur->length = l1;
+        cur->content[l1] = 0;
+        cur->next_segment = mid;
+        prev = cur;
+        cur = mid;
+    }
+
+    // Create and insert new segment
+    text_segment *ins = (text_segment *)malloc(sizeof(text_segment));
+    ins->length = strlen(str);
+    ins->content = (char *)malloc(ins->length + 1);
+    strcpy(ins->content, str);
+    ins->state = PENDING_INS;
+    ins->next_segment = cur;
+
+    if (prev) {
+        prev->next_segment = ins;
+    } else {
+        doc->working_head = ins;
+    }
+
+    return SUCCESS;
+}
