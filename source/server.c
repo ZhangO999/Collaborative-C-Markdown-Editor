@@ -357,3 +357,77 @@ command_node_t *dequeue_command(void) {
     
     return node;
 }
+
+// Background thread that processes command queue and broadcasts updates
+void *broadcast_thread(void *arg) {
+    (void)arg;
+    
+    while (server_running) {
+        // Convert ms to microseconds
+        usleep(broadcast_interval_ms * BROADCAST_INTERVAL_MULTIPLIER); 
+        
+        // Check if there are commands to process
+        pthread_mutex_lock(&command_queue_mutex);
+        if (!command_head) {
+            pthread_mutex_unlock(&command_queue_mutex);
+            continue;
+        }
+
+        // Collect all commands from queue first
+        command_node_t *commands_to_process = command_head;
+        command_head = command_tail = NULL;
+        pthread_mutex_unlock(&command_queue_mutex);
+
+        // Now process all commands while holding doc mutex
+        pthread_mutex_lock(&doc_mutex);
+        uint64_t old_version = doc->current_version;
+        char version_message[MAX_LOG_LEN];
+        char temp_buffer[1024];
+        
+        snprintf(version_message, sizeof(version_message), 
+                "VERSION %lu\n", old_version + 1);
+
+        command_node_t *cmd = commands_to_process;
+        int commands_processed = 0;
+        while (cmd != NULL) {
+            char result[256];
+            execute_queued_command(cmd->username, cmd->command, result);
+            
+            snprintf(temp_buffer, sizeof(temp_buffer), 
+                    "EDIT %s %s %s\n", cmd->username, cmd->command, result);
+            strcat(version_message, temp_buffer);
+            
+            commands_processed++;
+            
+            command_node_t *next = cmd->next;
+            free(cmd);
+            cmd = next;
+        }
+        
+        strcat(version_message, "END\n");
+
+        // Only increment version and broadcast if commands were processed
+        if (commands_processed > 0) {
+            markdown_increment_version(doc);
+            
+            // Update broadcast log
+            pthread_mutex_lock(&log_mutex);
+            strcat(broadcast_log, version_message);
+            pthread_mutex_unlock(&log_mutex);
+            
+            // Broadcast to all clients
+            pthread_mutex_lock(&clients_mutex);
+            for (int i = 0; i < MAX_CLIENTS; i++) {
+                if (clients[i].active) {
+                    write(clients[i].write_fd, version_message, 
+                          strlen(version_message));
+                }
+            }
+            pthread_mutex_unlock(&clients_mutex);
+        }
+        
+        pthread_mutex_unlock(&doc_mutex);
+    }
+    
+    return NULL;
+}
