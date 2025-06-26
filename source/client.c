@@ -138,11 +138,11 @@ int authenticate_and_download(void) {
     response[bytes_read] = '\0';
     size_t doc_length = strtoull(response, NULL, 10);
 
-    // Initialize local document - but DON'T populate it yet
-    local_document = markdown_init();
+    // DON'T initialize local document yet - wait for server broadcasts
+    // local_document will remain NULL until we receive updates
     
     // Read and discard initial document content - client should wait for 
-    // broadcasts
+    // broadcasts to build local state
     if (doc_length > 0) {
         char *content = (char *)malloc(doc_length + 1);
         if (!content) {
@@ -161,8 +161,7 @@ int authenticate_and_download(void) {
             }
             total_read += chunk;
         }
-        // Don't insert content into local document - wait for server 
-        // broadcasts
+        // Don't use this content - wait for server broadcasts
         free(content);
     }
     
@@ -212,6 +211,11 @@ void check_for_broadcasts(void) {
             if (bytes_read > 0) {
                 broadcast[bytes_read] = '\0';
                 printf("Server update:\n%s", broadcast);
+                
+                // Do NOT automatically update local document state
+                // The client should only maintain local state when explicitly needed
+                // This ensures proper timing separation between command sending
+                // and document state updates
             }
         }
     }
@@ -249,6 +253,8 @@ void process_command(const char *command) {
     }
     
     // All other commands (editing commands) - just send and wait for broadcast
+    // Do NOT check for broadcasts immediately after sending - let the server
+    // process in its own timing
     send_command(command);
 }
 
@@ -266,6 +272,8 @@ void run_command_loop(void) {
         fflush(stdout);
 
         // Check for server broadcasts before reading user input
+        // This ensures we see updates from previous commands, but not
+        // immediately after sending current command
         check_for_broadcasts();
 
         // Read user command
@@ -280,6 +288,9 @@ void run_command_loop(void) {
             
             // Process the command
             process_command(command);
+            
+            // DO NOT check for broadcasts immediately after processing
+            // Let the server handle timing of broadcasts
         } else {
             break; // EOF or error
         }

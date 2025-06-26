@@ -4,7 +4,16 @@ CC      := gcc
 CFLAGS  := -Wall -Wextra -std=c11 -Ilibs -fsanitize=address
 LDFLAGS := -pthread
 
-.PHONY: all clean
+# Source files
+SERVER_SOURCES = source/server.c source/markdown.c
+CLIENT_SOURCES = source/client.c source/markdown.c
+TEST_SOURCES = test_debug_complex.c source/markdown.c
+
+# Object files
+SERVER_OBJECTS = $(SERVER_SOURCES:.c=.o)
+CLIENT_OBJECTS = $(CLIENT_SOURCES:.c=.o)
+
+.PHONY: all clean debug_test
 all: server client
 
 # Compile markdown.o
@@ -24,13 +33,25 @@ client.o: source/client.c libs/markdown.h
 	$(CC) $(CFLAGS) -c source/client.c -o client.o
 
 # Link server (needs pthreads)
-server: server.o markdown.o
-	$(CC) $(CFLAGS) $(LDFLAGS) -o server server.o markdown.o
+server: $(SERVER_OBJECTS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o server $(SERVER_OBJECTS)
 
 # Link client
-client: client.o markdown.o
-	$(CC) $(CFLAGS) -o client client.o markdown.o
+client: $(CLIENT_OBJECTS)
+	$(CC) $(CFLAGS) -o client $(CLIENT_OBJECTS)
+
+# Debug test
+debug_test: test_debug_complex.o source/markdown.o
+	$(CC) $(CFLAGS) -o debug_test test_debug_complex.o source/markdown.o
+	./debug_test
+
+test_debug_complex.o: test_debug_complex.c
+	$(CC) $(CFLAGS) -c test_debug_complex.c -o test_debug_complex.o
+
+# Pattern rule for object files
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 # Cleanup
 clean:
-	rm -f *.o server client
+	rm -f server client debug_test *.o source/*.o test_debug_complex.o
