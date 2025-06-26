@@ -1,5 +1,9 @@
 # Collaborative Markdown Document Editor
+A robust C-based client–server Markdown editor that supports real-time collaborative editing, deterministic versioning, including merge-conflict handling and role-based access control. 
 
+## Overview
+
+This system enables multiple CLI clients to concurrently edit a shared Markdown document. Clients communicate atomic edit commands to a central server via POSIX named pipes (FIFOs) and receive batched updates through real-time signals to maintain a consistent view. A custom parallel linkedList-like data structure is utilised to simulate and track committed changes. 
 
 ## Features
 - **Client-server architecture** using POSIX FIFOs and signals
@@ -10,13 +14,19 @@
 - **Document versioning** and logging
 - **Graceful client disconnect and server shutdown**
 
-## File Structure
-- `source/server.c` — Main server implementation
-- `source/client.c` — Main client implementation
-- `source/markdown.c` — Markdown document logic and editing functions
-- `libs/markdown.h`, `libs/document.h` — Public API and document structures
-- `roles.txt` — User roles and permissions
-- `.gitignore` — Ignores build artifacts, FIFOs, and temp files
+## Key Behaviors
+
+- **Concurrent Edit Batching**: Clients send individual commands (e.g., `INSERT`, `DEL`, formatting) which the server aggregates over a configurable interval (e.g., 500 ms). All commands are applied in arrival order and broadcast as a versioned delta.
+- **Role-Based Access Control**: User roles (`write` or `read`) defined in `roles.txt` govern permissions. Write-enabled users modify content; read-only users only receive updates.
+- **Deterministic Versioning & Auditing**: Each broadcast cycle increments the global version counter. Clients can query specific versions or retrieve the full, timestamped command log for rollback and audit purposes.
+- **Fault Tolerance & Cleanup**: The server detects client disconnects via signal handlers, persists the latest `doc.md` snapshot, and removes FIFOs to prevent resource leaks.
+- **Rich Markdown Formatting**: Native support for:
+  - Headings (H1–H3)
+  - Bold, Italic
+  - Blockquotes, Ordered/Unordered Lists
+  - Inline Code, Horizontal Rules
+  - Hyperlinks
+ 
 
 ## Building
 This project uses a standard C compiler (e.g., `gcc`). To build both the server and client:
@@ -42,7 +52,13 @@ eve write
 ```
 
 ### 2. Start the server
+   ```bash
+   ./client <server_pid> <username>
+````
 Run the server with the desired broadcast interval (in milliseconds):
+   ```bash
+   ./server <broadcast-interval-ms>
+   ```
 
 ```sh
 ./server 1000
@@ -65,11 +81,9 @@ Run the client, providing the server PID and your username:
 - **Query commands:** `DOC?`, `PERM?`, `LOG?`
 - **Disconnect:** `DISCONNECT`
 
-Refer to the assignment spec for command syntax and details.
-
 ### 5. Server shutdown
 - Type `QUIT` in the server terminal to shut down (only when no clients are connected).
-- The document is saved to `doc.md` on shutdown and on client disconnects.
+- The document is saved to `doc.md` on shutdown and on client disconnects, and relevant cleanup operations are executed (i.e. remove all FIFOs) 
 
 ## Cleaning Up
 To remove build artifacts and FIFOs:
@@ -81,5 +95,4 @@ rm -f server client *.o FIFO_C2S_* FIFO_S2C_* doc.md
 ## Notes
 - Ensure you have the correct permissions to create FIFOs in the working directory.
 - The project is designed for Linux systems with POSIX support.
-- For more details, see the assignment specification and comments in the source code. 
->>>>>>> 746950da (add supporting files)
+
